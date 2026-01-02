@@ -1,5 +1,5 @@
 {
-  "name": "Contador de Cajas (QR)",
+  "name": "Contador de Cajas",
   "short_name": "Cajas QR",
   "start_url": "/contador-cajas/scanner.html",
   "scope": "/contador-cajas/",
@@ -11,3 +11,4 @@
     { "src": "/cajas-qr/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
   ]
 }
+
