@@ -84,10 +84,8 @@ function parseQR(text) {
   if (text.startsWith("{") && text.endsWith("}")) {
     const obj = JSON.parse(text);
 
-    // Normalizar claves esperadas
     const factura = String(obj.factura ?? obj.fac ?? "").trim();
     const bulto   = String(obj.bulto ?? obj.b ?? "").trim();
-
     if (!factura || !bulto) throw new Error("QR inválido: falta factura o bulto");
 
     return {
@@ -103,23 +101,41 @@ function parseQR(text) {
     };
   }
 
-  // 2) Formato con separador (ej: cliente|direccion|localidad|provincia|orden|factura|bulto|total|transporte)
-  const parts = text.split("|").map(s => s.trim());
-  if (parts.length >= 7) {
-    const [cliente, direccion, localidad, provincia, orden, factura, bulto, total_bultos, transporte] = parts;
-    if (!factura || !bulto) throw new Error("QR inválido: falta factura o bulto");
+  // 2) Formato clave=valor (EL QUE GENERA TU etiquetas.html)
+  // OC=xxx|FAC=yyy|B=1|T=4|CL=Cliente|TR=Transporte
+  if (text.includes("=") && text.includes("|")) {
+    const obj = {};
+    text.split("|").forEach(part => {
+      const i = part.indexOf("=");
+      if (i === -1) return;
+      const k = part.slice(0, i).trim().toUpperCase();
+      const v = part.slice(i + 1).trim();
+      obj[k] = v;
+    });
+
+    const factura = (obj["FAC"] || "").trim();
+    const bulto = (obj["B"] || "").trim();
+    const orden = (obj["OC"] || "").trim();
+    const total = (obj["T"] || "").trim();
+    const cliente = (obj["CL"] || "").trim();
+    const transporte = (obj["TR"] || "").trim();
+
+    if (!factura || !bulto) throw new Error("QR inválido: falta FAC o B");
+
     return {
-      cliente, direccion, localidad, provincia,
-      orden: orden || "",
+      cliente,
+      direccion: "", localidad: "", provincia: "",
+      orden,
       factura,
       bulto: Number(bulto),
-      total_bultos: Number(total_bultos || 0),
-      transporte: transporte || ""
+      total_bultos: Number(total || 0),
+      transporte
     };
   }
 
   throw new Error("QR inválido: formato no reconocido");
 }
+
 
 function showMsg(type, text) {
   const el = $("msg");
@@ -343,3 +359,4 @@ $("btnResetDay").addEventListener("click", resetDay);
 
 // init
 refreshUI();
+
