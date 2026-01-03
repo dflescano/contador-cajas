@@ -365,22 +365,14 @@ function buildWorkbookForDay(rows, day) {
 
   return wb;
 }
-
 async function exportExcel() {
-  if (isPWA()) {
-    showMsg("warn", "📌 En la app instalada Android suele bloquear exportar. Tocá 'Abrir en navegador (exportar)'.");
-    const btn = $("btnOpenBrowser");
-    if (btn) btn.style.display = "inline-block";
-    return;
-  }
-
   if (typeof XLSX === "undefined") {
-    showMsg("bad", "Falta libs/xlsx.full.min.js. Copialo a la carpeta libs/");
+    showMsg("bad", "No se cargó XLSX");
     return;
   }
 
   const day = todayKey();
-  const rows = await getAllForDay(day);
+  const rows = await getAllToday(day);
 
   if (!rows.length) {
     showMsg("warn", "No hay registros para exportar.");
@@ -390,24 +382,48 @@ async function exportExcel() {
   const wb = buildWorkbookForDay(rows, day);
   const filename = `resumen_clientes_${day}.xlsx`;
 
+  // 👉 Generar archivo en memoria
+  const arrayBuffer = XLSX.write(wb, {
+    bookType: "xlsx",
+    type: "array"
+  });
+
+  const blob = new Blob(
+    [arrayBuffer],
+    { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
+  );
+
+  // 👉 Intentar compartir (Android)
   try {
-    const ab = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    const blob = new Blob([ab], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const file = new File([blob], filename, { type: blob.type });
 
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-
-    showMsg("ok", `📊 Exportado: ${filename}`);
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({
+        title: "Resumen del día",
+        text: "Excel de cajas escaneadas",
+        files: [file]
+      });
+      showMsg("ok", "📤 Excel listo para enviar");
+      return;
+    }
   } catch (e) {
-    showMsg("bad", `❌ No se pudo exportar: ${e.message || e}`);
+    console.warn("No se pudo compartir:", e);
   }
+
+  // 👉 Fallback: descarga clásica
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+
+  showMsg("ok", "📥 Excel descargado");
 }
+
+
 
 async function shareExcel() {
   if (isPWA()) {
