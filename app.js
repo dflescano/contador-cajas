@@ -4,7 +4,7 @@
 // Por eso, exportar/compartir se hace desde navegador (no instalada).
 
 // ===== Config =====
-const DB_NAME = "contador_cajas_db";
+const DB_NAME = "contador_cajas";
 const DB_VER  = 2;              // subimos versión para resetear store viejo si existía
 const STORE   = "scans";
 
