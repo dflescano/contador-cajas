@@ -359,9 +359,29 @@ async function exportExcel() {
 
   const wb = buildWorkbookForDay(rows, day);
   const filename = `resumen_clientes_${day}.xlsx`;
-  XLSX.writeFile(wb, filename);
-  showMsg("ok", `📊 Resumen del día exportado: ${filename}`);
+
+  try {
+    // ✅ Generar como archivo en memoria y forzar descarga (más compatible)
+    const ab = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([ab], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    });
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    showMsg("ok", `📊 Exportado: ${filename}`);
+  } catch (e) {
+    showMsg("bad", `❌ No se pudo exportar: ${e.message || e}`);
+  }
 }
+
 
 // ===== Compartir Excel (Android) =====
 async function shareExcel() {
