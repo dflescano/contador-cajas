@@ -3,26 +3,757 @@
 <head>
   <meta charset="UTF-8" />
   <title>Formato de Envío - Etiqueta</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-</head>
-<body>
-<script>
-function safeVal(s){ return String(s||"").replaceAll("|"," ").replaceAll("\n"," ").trim(); }
-function norm(s){ return (s||"").trim(); }
-function getBultosConfig(){ return { totalBultos: 3 }; }
 
-// QR completo con dirección / localidad / provincia
-function buildQrPayloadShort(bultoNumero){
-  const oc="OC123";
-  const fac="F001";
-  const cl="CLIENTE PRUEBA";
-  const tr="ANDREANI";
-  const di="CALLE FALSA 123";
-  const lo="CABA";
-  const pr="BUENOS AIRES";
-  const totalBultos=3;
-  return `OC=${safeVal(oc)}|FAC=${safeVal(fac)}|B=${bultoNumero}|T=${totalBultos}|CL=${safeVal(cl)}|DI=${safeVal(di)}|LO=${safeVal(lo)}|PR=${safeVal(pr)}|TR=${safeVal(tr)}`;
-}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <!-- QR generator (liviano) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <style>
+    body { font-family: 'Roboto', Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; color: #333; }
+    form { max-width: 800px; margin: 0 auto 20px; background: #fff; padding: 20px; border: 1px solid #888; border-radius: 8px; box-shadow: 2px 4px 8px rgba(0,0,0,.1); }
+    form fieldset { margin-bottom: 15px; padding: 15px; border: 1px solid #888; border-radius: 5px; }
+    form legend { font-weight: bold; padding: 0 5px; }
+    form label { display: inline-block; width: 220px; margin-bottom: 5px; }
+    form input[type="text"], form select {
+      width: calc(100% - 230px);
+      padding: 6px;
+      margin-bottom: 10px;
+      border: 1px solid #888;
+      border-radius: 4px;
+      background: #fff;
+    }
+
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+    button { padding: 10px 15px; background: #333; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #555; }
+    .btn-secondary { background: #666; }
+    .btn-secondary:hover { background: #777; }
+    .hint { font-size: 12px; opacity: 0.8; margin-left: auto; }
+
+    #preview, #print-wrapper { max-width: 800px; margin: 0 auto; }
+
+    .label-container {
+      border: 1px solid #000;
+      background: #fff;
+      box-sizing: border-box;
+      padding: 10px;
+      margin-bottom: 10px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      width: 210mm;
+      height: 148.5mm;
+      border-radius: 5px;
+    }
+
+    .header { background-color: #f9f9f9; padding: 5px; border-bottom: 1px solid #888; border-radius: 4px 4px 0 0; }
+    .remitente-container { display: flex; gap: 5px; align-items: center; }
+    .remitente-col.logo-col { flex: 1; text-align: left; }
+    .logo-container img { max-width: 150px; max-height: 150px; border-radius: 4px; }
+    .remitente-col.title-col { flex: 1; text-align: center; display: flex; align-items: center; justify-content: center; }
+    .remitente-col.title-col h2 { margin: 0; font-size: 16px; font-weight: 700; }
+    .remitente-col.details-col { flex: 2; text-align: right; }
+    .remitente-details { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-top: 2px; }
+    .remitente-details p { margin: 1px 0; font-size: 10px; font-weight: 500; word-wrap: break-word; }
+
+    .middle { display: flex; gap: 10px; margin: 20px 0; }
+    .middle-left, .middle-right { flex: 1; text-align: center; background: #f9f9f9; padding: 10px; border-radius: 4px; position: relative; }
+
+    .middle-left h2, .middle-right h2, .footer-col h2 {
+      font-size: 25px; font-weight: 700; margin: 0 0 5px;
+      border-bottom: 1px solid #888; padding-bottom: 2px;
+    }
+
+    .cliente-section p, .orden-factura p { font-size: 20px; font-weight: 500; margin: 5px 0; }
+    .cliente-section span, .orden-factura span { font-weight: 700; }
+
+    .footer { display: flex; gap: 10px; margin-top: 30px; }
+    .footer-col { flex: 1; text-align: center; padding: 10px; box-sizing: border-box; background: #f9f9f9; border-radius: 4px; }
+
+    .despachar-info p, .bulto-info span, .cantidad-info span { font-size: 35px; font-weight: 700; margin: 4px 0; }
+    #footer-left, #footer-left * { font-size: 30px !important; }
+
+    .editable[contenteditable="true"]{
+      outline: 2px dashed #666;
+      padding: 2px 4px;
+      border-radius: 4px;
+      background: rgba(0,0,0,0.03);
+      cursor: text;
+    }
+
+    #template-holder { display: none; }
+
+    #btnPrint{
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 9999;
+      box-shadow: 0 8px 18px rgba(0,0,0,.25);
+      border-radius: 999px;
+      padding: 14px 18px;
+    }
+
+    #preview:empty { display: none; }
+
+    .qr-box{
+      width: 118px;
+      height: 118px;
+      margin: 8px auto 0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:#fff;
+      border-radius:10px;
+      border: 1px solid rgba(0,0,0,.12);
+    }
+    .qr-box canvas, .qr-box img{
+      width:118px !important;
+      height:118px !important;
+    }
+    .qr-hint{ display:none !important; }
+
+    @media print {
+      form, #preview, #btnPrint { display: none !important; }
+      @page { size: A4 portrait; margin: 0; }
+
+      html, body{
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 210mm;
+        height: 297mm;
+        background: #fff !important;
+      }
+
+      :root{
+        --page-pad: 7mm;
+        --gap: 5mm;
+        --label-w: calc(210mm - (var(--page-pad) * 2));
+        --label-h: calc((297mm - (var(--page-pad) * 2) - var(--gap)) / 2);
+      }
+
+      #print-wrapper{
+        max-width: none !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+
+      body{
+        box-sizing: border-box;
+        padding: var(--page-pad) !important;
+      }
+
+      .label-container{
+        width: var(--label-w) !important;
+        height: var(--label-h) !important;
+        margin: 0 0 var(--gap) 0 !important;
+        padding: 4.5mm !important;
+        border-radius: 5px;
+        box-sizing: border-box;
+        overflow: visible !important;
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+
+      .middle { margin: 6mm 0 !important; }
+      .footer { margin-top: 6mm !important; }
+
+      .middle-left h2, .middle-right h2, .footer-col h2 {
+        font-size: 20px !important;
+        margin: 0 0 4px !important;
+      }
+
+      .cliente-section p, .orden-factura p {
+        font-size: 16px !important;
+        margin: 4px 0 !important;
+      }
+
+      .footer-col { padding: 6px !important; }
+      .despachar-info p, .bulto-info span, .cantidad-info span {
+        font-size: 28px !important;
+        margin: 2px 0 !important;
+        line-height: 1.05 !important;
+      }
+      #footer-left, #footer-left * { font-size: 24px !important; }
+
+      .qr-box{
+        width: 110px !important;
+        height: 110px !important;
+        margin-top: 6px !important;
+      }
+      .qr-box canvas, .qr-box img{
+        width:110px !important;
+        height:110px !important;
+      }
+
+      .label-container:nth-child(2n){
+        page-break-after: always;
+        break-after: page;
+      }
+      .label-container:last-child{
+        page-break-after: auto;
+        break-after: auto;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <form id="datosEnvio" autocomplete="on">
+    <fieldset>
+      <legend>Datos de Envío</legend>
+
+      <label for="inputCantidadBultos">Total de Bultos:</label>
+      <input type="text" id="inputCantidadBultos" placeholder="1" required><br>
+
+      <label for="inputOrdenCompra">Orden de Compra:</label>
+      <input type="text" id="inputOrdenCompra" placeholder="OC12345" required><br>
+
+      <label for="inputFactura">Factura N°:</label>
+      <input type="text" id="inputFactura" placeholder="F001" required><br>
+
+      <label for="inputBultoInicial">Bulto N° (inicio):</label>
+      <input type="text" id="inputBultoInicial" placeholder="1" required><br>
+    </fieldset>
+
+    <fieldset>
+      <legend>Datos del Cliente (Para)</legend>
+
+      <label for="clienteSelect">Clientes guardados:</label>
+      <select id="clienteSelect">
+        <option value="">— Seleccionar —</option>
+      </select><br>
+
+      <div class="toolbar" style="margin: 0 0 10px 0;">
+        <button type="button" class="btn-secondary" id="btnClienteNuevo">Guardar como cliente</button>
+        <button type="button" class="btn-secondary" id="btnClienteActualizar">Actualizar cliente</button>
+        <button type="button" class="btn-secondary" id="btnClienteBorrar">Borrar cliente</button>
+        <button type="button" class="btn-secondary" id="btnClientesExport">Exportar clientes</button>
+        <button type="button" class="btn-secondary" id="btnClientesImport">Importar clientes</button>
+        <span class="hint">Tip: guardá por “Señores” (empresa).</span>
+      </div>
+
+      <label for="inputSenores">Señores:</label>
+      <input type="text" id="inputSenores" placeholder="Nombre de la Empresa" required><br>
+
+      <label for="inputDireccion">Dirección:</label>
+      <input type="text" id="inputDireccion" placeholder="Calle Falsa 123" required><br>
+
+      <label for="inputLocalidad">Localidad:</label>
+      <input type="text" id="inputLocalidad" placeholder="Ciudad" required><br>
+
+      <label for="inputProvincia">Provincia:</label>
+      <input type="text" id="inputProvincia" placeholder="Provincia" required><br>
+    </fieldset>
+
+    <fieldset>
+      <legend>Datos de Despachar por</legend>
+
+      <label for="inputDespacharEmpresa">Despachar por - Empresa:</label>
+      <input type="text" id="inputDespacharEmpresa" placeholder="Empresa de Envíos" required><br>
+    </fieldset>
+
+    <fieldset>
+      <legend>Datos extra (para Scanner)</legend>
+
+      <label for="inputClienteNombre">Cliente (opcional):</label>
+      <input type="text" id="inputClienteNombre" placeholder="Si querés distinto a 'Señores'"><br>
+
+      <label for="inputTransporte">Transporte (opcional):</label>
+      <input type="text" id="inputTransporte" placeholder="Andreani / OCA / Fletero"><br>
+
+      <div class="hint">Si dejás vacío, el QR usa: Cliente=Señores y Transporte=Despachar por.</div>
+    </fieldset>
+
+    <div class="toolbar">
+      <button type="button" id="btnPreview">Vista previa (1 etiqueta)</button>
+
+      <button type="button" class="btn-secondary" id="btnToggleEdit">
+        Activar edición en etiqueta
+      </button>
+
+      <button type="button" class="btn-secondary" id="btnClear">
+        Limpiar datos guardados
+      </button>
+
+      <button type="button" class="btn-secondary" id="btnRefresh">
+        🔄 Refrescar página
+      </button>
+
+      <span class="hint">Se guarda solo en esta PC (navegador).</span>
+    </div>
+  </form>
+
+  <div id="template-holder">
+    <div class="label-container" id="label-template">
+      <div class="header">
+        <div class="remitente-container">
+          <div class="remitente-col logo-col">
+            <div class="logo-container">
+              <img src="logo.png" alt="Logo">
+            </div>
+          </div>
+          <div class="remitente-col title-col">
+            <h2>Remitente</h2>
+          </div>
+          <div class="remitente-col details-col">
+            <div class="remitente-details">
+              <p>MF HNOS S.A</p>
+              <p>Ingresos Brutos: 9D1-30712424032</p>
+              <p>CUIT: 30 71242403-2</p>
+              <p>Inicio: 08/2012</p>
+              <p>Av. Constituyentes 2985</p>
+              <p>[Sector i2]</p>
+              <p>C.A.B.A. (C1427BA)</p>
+              <p>Tel.: (54-11) 3526-7883</p>
+              <p>E-mail: mfnos@gmail.com</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="middle">
+        <div class="middle-left">
+          <h2>Para</h2>
+          <div class="cliente-section">
+            <p><span>Señores:</span> <span class="editable" data-bind="inputSenores">Nombre de la Empresa</span></p>
+            <p><span>Dirección:</span> <span class="editable" data-bind="inputDireccion">Calle Falsa 123</span></p>
+            <p><span>Localidad:</span> <span class="editable" data-bind="inputLocalidad">Ciudad</span></p>
+            <p><span>Provincia:</span> <span class="editable" data-bind="inputProvincia">Provincia</span></p>
+          </div>
+        </div>
+
+        <div class="middle-right">
+          <h2>Orden y Factura</h2>
+          <div class="orden-factura">
+            <p><span>Orden:</span> <span class="editable" data-bind="inputOrdenCompra">OC12345</span></p>
+            <p><span>Factura:</span> <span class="editable" data-bind="inputFactura">F001</span></p>
+
+            <div class="qr-box" data-qr></div>
+            <div class="qr-hint" data-qrtext></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <div class="footer-col" id="footer-left">
+          <h2>Despachar por</h2>
+          <div class="despachar-info">
+            <p><span class="editable" data-bind="inputDespacharEmpresa"></span></p>
+          </div>
+        </div>
+
+        <div class="footer-col" id="footer-center">
+          <h2>Bulto N°</h2>
+          <div class="bulto-info">
+            <span class="editable" data-bind="inputBultoInicial">1</span>
+          </div>
+        </div>
+
+        <div class="footer-col" id="footer-right">
+          <h2>Total de Bultos</h2>
+          <div class="cantidad-info">
+            <span class="editable" data-bind="inputCantidadBultos">1</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="preview"></div>
+  <div id="print-wrapper"></div>
+
+  <button id="btnPrint" type="button">🖨️ Imprimir etiquetas</button>
+
+<script>
+  const STORAGE_KEY = "etiqueta_envio_v2";
+  const CLIENTS_KEY = "etiqueta_clientes_v1";
+
+  const FIELD_IDS = [
+    "inputCantidadBultos",
+    "inputOrdenCompra",
+    "inputFactura",
+    "inputBultoInicial",
+    "inputSenores",
+    "inputDireccion",
+    "inputLocalidad",
+    "inputProvincia",
+    "inputDespacharEmpresa",
+    "inputClienteNombre",
+    "inputTransporte"
+  ];
+
+  function el(id){ return document.getElementById(id); }
+  function norm(s){ return (s || "").trim().replace(/\s+/g, " "); }
+  function keyify(s){ return norm(s).toLowerCase(); }
+
+  function hardClear(node){
+    if (!node) return;
+    while (node.firstChild) node.removeChild(node.firstChild);
+    node.textContent = "";
+    node.innerHTML = "";
+  }
+  function clearPreview(){ hardClear(el("preview")); }
+  function clearPrintWrapper(){ hardClear(el("print-wrapper")); }
+
+  function readFormData() {
+    const data = {};
+    for (const id of FIELD_IDS) data[id] = norm(el(id).value);
+    return data;
+  }
+  function writeFormData(data) {
+    for (const id of FIELD_IDS) if (typeof data?.[id] === "string") el(id).value = data[id];
+  }
+  function saveFormData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(readFormData())); }
+  function loadFormData() {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    try { writeFormData(JSON.parse(raw)); } catch(e){ console.warn(e); }
+  }
+
+  // ===== Clientes =====
+  function loadClients() {
+    const raw = localStorage.getItem(CLIENTS_KEY);
+    if (!raw) return [];
+    try { const arr = JSON.parse(raw); return Array.isArray(arr) ? arr : []; } catch { return []; }
+  }
+  function saveClients(clients) { localStorage.setItem(CLIENTS_KEY, JSON.stringify(clients)); }
+  function upsertClient(client) {
+    const clients = loadClients();
+    const idx = clients.findIndex(c => c.key === client.key);
+    if (idx >= 0) clients[idx] = client; else clients.push(client);
+    clients.sort((a,b) => (a.nombre||"").localeCompare(b.nombre||"", "es", { sensitivity: "base" }));
+    saveClients(clients);
+    return clients;
+  }
+  function deleteClientByKey(k) {
+    const clients = loadClients().filter(c => c.key !== k);
+    saveClients(clients);
+    return clients;
+  }
+
+  function fillClienteSelect(selectedKey = "") {
+    const select = el("clienteSelect");
+    const clients = loadClients();
+    select.innerHTML = `<option value="">— Seleccionar —</option>`;
+    clients.forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c.key;
+      opt.textContent = c.nombre;
+      select.appendChild(opt);
+    });
+    select.value = selectedKey || "";
+  }
+
+  function currentClientFromInputs() {
+    const nombre = norm(el("inputSenores").value);
+    if (!nombre) return null;
+    return {
+      key: keyify(nombre),
+      nombre,
+      direccion: norm(el("inputDireccion").value),
+      localidad: norm(el("inputLocalidad").value),
+      provincia: norm(el("inputProvincia").value)
+    };
+  }
+  function applyClientToInputs(client) {
+    el("inputSenores").value = client.nombre || "";
+    el("inputDireccion").value = client.direccion || "";
+    el("inputLocalidad").value = client.localidad || "";
+    el("inputProvincia").value = client.provincia || "";
+  }
+
+  function getBultosConfig() {
+    const totalBultos = Math.max(1, parseInt(el("inputCantidadBultos").value, 10) || 1);
+    const startBulto  = Math.max(1, parseInt(el("inputBultoInicial").value, 10) || 1);
+    return { totalBultos, startBulto };
+  }
+
+  let previewActive = false;
+
+  let editMode = false;
+  function setEditMode(on) {
+    editMode = !!on;
+    el("btnToggleEdit").innerText = editMode ? "Desactivar edición en etiqueta" : "Activar edición en etiqueta";
+    if (previewActive) renderSinglePreview();
+  }
+
+  function safeVal(s){ return String(s || "").replaceAll("|", " ").replaceAll("\\n"," ").trim(); }
+
+  // ✅ QR completo: incluye Cliente + Dirección + Localidad + Provincia + Transporte
+  // Formato: OC=...|FAC=...|B=...|T=...|CL=...|DI=...|LO=...|PR=...|TR=...
+  function buildQrPayloadShort(bultoNumero){
+    const { totalBultos } = getBultosConfig();
+    const oc  = norm(el("inputOrdenCompra").value);
+    const fac = norm(el("inputFactura").value);
+
+    const cl = norm(el("inputClienteNombre").value) || norm(el("inputSenores").value);
+    const tr = norm(el("inputTransporte").value) || norm(el("inputDespacharEmpresa").value);
+
+    const di = norm(el("inputDireccion").value);
+    const lo = norm(el("inputLocalidad").value);
+    const pr = norm(el("inputProvincia").value);
+
+    return `OC=${safeVal(oc)}|FAC=${safeVal(fac)}|B=${bultoNumero}|T=${totalBultos}|CL=${safeVal(cl)}|DI=${safeVal(di)}|LO=${safeVal(lo)}|PR=${safeVal(pr)}|TR=${safeVal(tr)}`;
+  }
+
+  function fillLabelFromInputs(labelEl, bultoNumero) {
+    const get = (id) => norm(el(id).value);
+
+    const setField = (inputId, text) => {
+      const node = labelEl.querySelector(`.editable[data-field="${inputId}"]`);
+      if (node) node.innerText = text;
+    };
+
+    setField("inputSenores", get("inputSenores"));
+    setField("inputDireccion", get("inputDireccion"));
+    setField("inputLocalidad", get("inputLocalidad"));
+    setField("inputProvincia", get("inputProvincia"));
+    setField("inputOrdenCompra", get("inputOrdenCompra"));
+    setField("inputFactura", get("inputFactura"));
+    setField("inputDespacharEmpresa", get("inputDespacharEmpresa"));
+
+    setField("inputBultoInicial", String(bultoNumero));
+    setField("inputCantidadBultos", get("inputCantidadBultos"));
+  }
+
+  function applyLabelEdit(inputId, newValue) {
+    const input = el(inputId);
+    if (!input) return;
+    input.value = norm(newValue);
+    saveFormData();
+    if (previewActive) renderSinglePreview();
+  }
+
+  function buildLabelClone(bultoNumero) {
+    const template = el("label-template");
+    if (!template) return null;
+
+    const clone = template.cloneNode(true);
+    clone.removeAttribute("id");
+    clone.querySelectorAll("[id]").forEach(n => n.removeAttribute("id"));
+
+    clone.querySelectorAll(".editable").forEach(n => {
+      const bind = n.getAttribute("data-bind");
+      if (bind) n.setAttribute("data-field", bind);
+      n.setAttribute("contenteditable", editMode ? "true" : "false");
+    });
+
+    clone.querySelectorAll(".editable[data-field]").forEach(node => {
+      node.addEventListener("blur", () => {
+        if (!editMode) return;
+        applyLabelEdit(node.getAttribute("data-field"), node.innerText);
+      });
+      node.addEventListener("keydown", (e) => {
+        if (!editMode) return;
+        if (e.key === "Enter") { e.preventDefault(); node.blur(); }
+      });
+    });
+
+    fillLabelFromInputs(clone, bultoNumero);
+
+    // QR
+    const qrBox = clone.querySelector("[data-qr]");
+    if (qrBox && window.QRCode) {
+      const payload = buildQrPayloadShort(bultoNumero);
+      qrBox.innerHTML = "";
+      new QRCode(qrBox, { text: payload, width: 118, height: 118, correctLevel: QRCode.CorrectLevel.M });
+    }
+
+    return clone;
+  }
+
+  function renderSinglePreview() {
+    const { startBulto } = getBultosConfig();
+    clearPreview();
+    const label = buildLabelClone(startBulto);
+    if (label) el("preview").appendChild(label);
+  }
+
+  function renderPrintLabels() {
+    const { totalBultos, startBulto } = getBultosConfig();
+    clearPrintWrapper();
+
+    const prevEdit = editMode;
+    editMode = false;
+
+    for (let i = startBulto; i < startBulto + totalBultos; i++) {
+      const label = buildLabelClone(i);
+      if (!label) continue;
+      label.querySelectorAll(".editable").forEach(n => n.setAttribute("contenteditable", "false"));
+      el("print-wrapper").appendChild(label);
+    }
+
+    editMode = prevEdit;
+  }
+
+  function printLabels() {
+    saveFormData();
+    renderPrintLabels();
+    window.print();
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    loadFormData();
+    fillClienteSelect();
+    setEditMode(false);
+
+    FIELD_IDS.forEach(id => {
+      el(id).addEventListener("input", () => {
+        saveFormData();
+        if (previewActive) renderSinglePreview();
+      });
+    });
+
+    el("clienteSelect").addEventListener("change", () => {
+      const k = el("clienteSelect").value;
+      if (!k) return;
+      const client = loadClients().find(c => c.key === k);
+      if (!client) return;
+      applyClientToInputs(client);
+      saveFormData();
+      if (previewActive) renderSinglePreview();
+    });
+
+    el("btnClienteNuevo").addEventListener("click", () => {
+      const c = currentClientFromInputs();
+      if (!c) return alert("Poné un nombre en 'Señores' para guardar el cliente.");
+      const exists = loadClients().some(x => x.key === c.key);
+      if (exists) return alert("Ese cliente ya existe. Usá 'Actualizar cliente'.");
+      upsertClient(c);
+      fillClienteSelect(c.key);
+      alert("Cliente guardado ✅");
+    });
+
+    el("btnClienteActualizar").addEventListener("click", () => {
+      const selected = el("clienteSelect").value;
+      if (!selected) return alert("Seleccioná un cliente para actualizar.");
+      const c = currentClientFromInputs();
+      if (!c) return alert("Completa 'Señores'.");
+
+      if (c.key !== selected) {
+        const ok = confirm("Cambiaste el nombre del cliente. ¿Renombrar (crea uno nuevo y borra el anterior)?");
+        if (!ok) return;
+        deleteClientByKey(selected);
+        upsertClient(c);
+        fillClienteSelect(c.key);
+        alert("Cliente renombrado y actualizado ✅");
+        return;
+      }
+
+      upsertClient(c);
+      fillClienteSelect(c.key);
+      alert("Cliente actualizado ✅");
+    });
+
+    el("btnClienteBorrar").addEventListener("click", () => {
+      const selected = el("clienteSelect").value;
+      if (!selected) return alert("Seleccioná un cliente para borrar.");
+      const ok = confirm("¿Seguro que querés borrar este cliente?");
+      if (!ok) return;
+      deleteClientByKey(selected);
+      fillClienteSelect("");
+      alert("Cliente borrado ✅");
+    });
+
+    el("btnClientesExport").addEventListener("click", () => {
+      const clients = loadClients();
+      const payload = { exported_at: new Date().toISOString(), version: 1, clients };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "clientes_etiquetas.json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+
+    el("btnClientesImport").addEventListener("click", async () => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "application/json,.json";
+
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+
+        try {
+          const text = await file.text();
+          const obj = JSON.parse(text);
+          const incoming = Array.isArray(obj) ? obj : obj.clients;
+
+          if (!Array.isArray(incoming)) {
+            alert("El archivo no tiene formato válido (no encuentro 'clients').");
+            return;
+          }
+
+          const cleaned = incoming
+            .map(c => ({
+              key: (c.key ? String(c.key) : keyify(c.nombre)),
+              nombre: norm(c.nombre || ""),
+              direccion: norm(c.direccion || ""),
+              localidad: norm(c.localidad || ""),
+              provincia: norm(c.provincia || "")
+            }))
+            .filter(c => c.nombre);
+
+          if (cleaned.length === 0) {
+            alert("No se encontraron clientes válidos en el archivo.");
+            return;
+          }
+
+          let current = loadClients();
+          cleaned.forEach(c => {
+            const idx = current.findIndex(x => x.key === c.key);
+            if (idx >= 0) current[idx] = c; else current.push(c);
+          });
+
+          current.sort((a,b) => (a.nombre||"").localeCompare(b.nombre||"", "es", { sensitivity: "base" }));
+          saveClients(current);
+
+          fillClienteSelect("");
+          alert(`Importación OK ✅ Se cargaron/actualizaron ${cleaned.length} clientes.`);
+        } catch (e) {
+          console.error(e);
+          alert("No se pudo importar: el archivo no es JSON válido.");
+        }
+      };
+
+      input.click();
+    });
+
+    el("btnPreview").addEventListener("click", () => {
+      previewActive = true;
+      saveFormData();
+      renderSinglePreview();
+    });
+
+    el("btnToggleEdit").addEventListener("click", () => setEditMode(!editMode));
+
+    el("btnClear").addEventListener("click", () => {
+      localStorage.removeItem(STORAGE_KEY);
+      FIELD_IDS.forEach(id => el(id).value = "");
+      previewActive = false;
+      clearPreview();
+      clearPrintWrapper();
+      alert("Listo: se borraron los datos del formulario (los clientes guardados siguen).");
+    });
+
+    el("btnRefresh").addEventListener("click", () => {
+      const ok = confirm("¿Refrescar la página? Se perderá la vista previa actual.");
+      if (!ok) return;
+      window.location.reload();
+    });
+
+    el("btnPrint").addEventListener("click", printLabels);
+
+    window.addEventListener("afterprint", () => clearPrintWrapper());
+  });
 </script>
 </body>
 </html>

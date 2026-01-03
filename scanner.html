@@ -1,11 +1,152 @@
 <!doctype html>
 <html lang="es">
 <head>
-<meta charset="utf-8">
-<title>Contador de Cajas</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Contador de Cajas (QR)</title>
+
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#111827">
+
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:0;background:#f3f4f6;color:#111827}
+    header{position:sticky;top:0;background:#111827;color:#fff;padding:12px 14px;display:flex;gap:10px;align-items:center;justify-content:space-between}
+    header .left{display:flex;flex-direction:column}
+    header .title{font-weight:700}
+    header .sub{font-size:12px;opacity:.85}
+    .wrap{max-width:980px;margin:0 auto;padding:14px;display:grid;gap:12px}
+    .card{background:#fff;border-radius:14px;padding:14px;box-shadow:0 2px 12px rgba(0,0,0,.06)}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    button{border:0;border-radius:12px;padding:10px 12px;font-weight:700;cursor:pointer}
+    .btn{background:#111827;color:#fff}
+    .btn2{background:#e5e7eb;color:#111827}
+    .btnDanger{background:#b91c1c;color:#fff}
+    .stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+    .stat{background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:10px}
+    .stat .k{font-size:12px;opacity:.7}
+    .stat .v{font-size:22px;font-weight:800;margin-top:4px}
+    #msg{padding:10px 12px;border-radius:12px;font-weight:700}
+    .ok{background:#dcfce7;color:#166534}
+    .warn{background:#fef9c3;color:#854d0e}
+    .bad{background:#fee2e2;color:#991b1b}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid #e5e7eb;padding:8px 6px;font-size:13px;text-align:left}
+    th{font-size:12px;opacity:.75}
+    code{background:#f3f4f6;padding:2px 6px;border-radius:8px}
+    .hint{font-size:12px;opacity:.75}
+    .grid2{display:grid;grid-template-columns:1.2fr .8fr;gap:12px}
+    @media (max-width: 860px){ .grid2{grid-template-columns:1fr} .stats{grid-template-columns:1fr} }
+  </style>
 </head>
+
 <body>
-<h1>Scanner QR</h1>
+<header>
+  <div class="left">
+    <div class="title">📦 Contador de Cajas (QR)</div>
+    <div class="sub">Offline + Export a Excel (.xlsx)</div>
+  </div>
+  <div class="row">
+    <button class="btn2" id="btnInstall" style="display:none;">Instalar</button>
+    <button class="btn2" id="btnResetDay">Nueva jornada</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:flex-start;">
+      <div>
+        <div style="font-weight:800;font-size:16px;">📅 Jornada</div>
+        <div class="hint">Se guarda local en el dispositivo (IndexedDB). No hace falta internet.</div>
+      </div>
+
+      <div class="row" style="align-items:center;">
+        <label class="hint" for="who">Operador:</label>
+        <input id="who" placeholder="Ej: ALBA" style="padding:10px 12px;border-radius:12px;border:1px solid #e5e7eb;font-weight:700;">
+        <button class="btn" id="btnExport">Exportar Excel</button>
+        <button class="btn2" id="btnShare">Compartir Excel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div style="font-weight:800;margin-bottom:8px;">📷 Escaneo</div>
+      <div id="reader" style="width:100%;"></div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn" id="btnStart">Iniciar cámara</button>
+        <button class="btn2" id="btnStop">Detener</button>
+        <button class="btnDanger" id="btnClearAll">Borrar todo</button>
+      </div>
+      <div id="msg" class="ok" style="margin-top:10px;display:none;"></div>
+
+      <div id="libWarn" class="hint" style="margin-top:10px;display:none;">
+        ⚠️ No encuentro <code>libs/html5-qrcode.min.js</code> o <code>libs/xlsx.full.min.js</code>.
+        Copialos a la carpeta <code>libs/</code> para que funcione offline.
+      </div>
+
+      <div class="hint" style="margin-top:8px;">
+        ID único por caja: <code>factura + "-" + bulto</code> (ej: <code>f5667-1</code>).
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-weight:800;margin-bottom:8px;">📊 Totales</div>
+      <div class="stats">
+        <div class="stat">
+          <div class="k">Cajas registradas (hoy)</div>
+          <div class="v" id="stTotal">0</div>
+        </div>
+        <div class="stat">
+          <div class="k">Facturas distintas</div>
+          <div class="v" id="stFacturas">0</div>
+        </div>
+        <div class="stat">
+          <div class="k">Último escaneo</div>
+          <div class="v" id="stLast" style="font-size:14px;font-weight:800;line-height:1.2;">-</div>
+        </div>
+      </div>
+
+      <div style="margin-top:14px;font-weight:800;">🧾 Últimos 10</div>
+      <div style="max-height:340px;overflow:auto;margin-top:6px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Hora</th><th>Cliente</th><th>Factura</th><th>Bulto</th><th>Dirección</th>
+            </tr>
+          </thead>
+          <tbody id="lastTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="font-weight:800;margin-bottom:8px;">📦 Estado por Factura (escaneados / total)</div>
+    <div id="byFactura" class="hint">-</div>
+  </div>
+
+</div>
+
+<!-- Librerías locales para offline -->
+<script src="libs/html5-qrcode.min.js"></script>
+<script src="libs/xlsx.full.min.js"></script>
 <script src="app.js"></script>
+
+<script>
+  // Registrar Service Worker (offline)
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('service-worker.js'));
+  }
+
+  // Si faltan libs, avisar claro (sin romper toda la UI)
+  window.addEventListener("load", () => {
+    const warn = document.getElementById("libWarn");
+    if (typeof Html5Qrcode === "undefined" || typeof XLSX === "undefined") {
+      warn.style.display = "block";
+    }
+  });
+</script>
+
 </body>
 </html>
