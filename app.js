@@ -1,82 +1,23 @@
-// Contador de Cajas (QR) — app.js
-// Guarda escaneos offline en IndexedDB y exporta resumen a Excel (desde navegador).
-// Nota: En PWA instalada (standalone) Android suele bloquear descargas/compartir archivos.
-// Por eso, exportar/compartir se hace desde navegador (no instalada).
-
 // ===== Config =====
-const DB_NAME = "contador_cajas";
-const DB_VER  = 2;              // subimos versión para resetear store viejo si existía
+const DB_NAME = "contador_cajas_db";
+const DB_VER  = 1;
 const STORE   = "scans";
 
 const $ = (id) => document.getElementById(id);
-
-// ===== Helpers =====
-function todayKey() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth()+1).padStart(2,"0");
-  const dd = String(d.getDate()).padStart(2,"0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-function nowISO() { return new Date().toISOString(); }
-function timeHM(diso) {
-  const d = new Date(diso);
-  const hh = String(d.getHours()).padStart(2,"0");
-  const mm = String(d.getMinutes()).padStart(2,"0");
-  return `${hh}:${mm}`;
-}
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, m => ({
-    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
-  })[m]);
-}
-function showMsg(type, text) {
-  const el = $("msg");
-  if (!el) return alert(text);
-  el.style.display = "block";
-  el.className = type === "ok" ? "ok" : type === "warn" ? "warn" : "bad";
-  el.textContent = text;
-  setTimeout(() => { el.style.display = "none"; }, 3800);
-}
-
-// Detectar si está instalada como PWA (standalone)
-function isPWA() {
-  return window.matchMedia('(display-mode: standalone)').matches
-      || window.navigator.standalone === true;
-}
-function openInBrowser() {
-  try {
-    const url = window.location.href;
-    window.open(url, "_blank", "noopener,noreferrer");
-  } catch (e) {
-    window.location.href = window.location.href;
-  }
-}
 
 // ===== IndexedDB =====
 function openDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VER);
-
     req.onupgradeneeded = () => {
       const db = req.result;
-
-      // recrea store para evitar estructuras viejas
-      if (db.objectStoreNames.contains(STORE)) {
-        db.deleteObjectStore(STORE);
+      if (!db.objectStoreNames.contains(STORE)) {
+        const st = db.createObjectStore(STORE, { keyPath: "id_caja" }); // factura-bulto
+        st.createIndex("by_day", "day", { unique: false });
+        st.createIndex("by_factura", "factura", { unique: false });
+        st.createIndex("by_time", "ts", { unique: false });
       }
-
-      // id_scan único: day + factura + bulto + ts  => nunca se pisa
-      const st = db.createObjectStore(STORE, { keyPath: "id_scan" });
-
-      st.createIndex("by_day", "day", { unique: false });
-      st.createIndex("by_factura", "factura", { unique: false });
-      st.createIndex("by_time", "ts", { unique: false });
-
-      // para detectar duplicados "lógicos" dentro del día: factura-bulto
-      st.createIndex("by_id_caja_day", "id_caja_day", { unique: false });
     };
-
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
@@ -92,7 +33,7 @@ async function putScan(scan) {
   });
 }
 
-async function getAllForDay(day) {
+async function getAllToday(day) {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, "readonly");
@@ -114,16 +55,45 @@ async function clearAll() {
   });
 }
 
-// ===== QR Parsing =====
-// Acepta QR en JSON o en texto con separadores (etiquetas.html)
-// Formato: OC=...|FAC=...|B=...|T=...|CL=...|DI=...|LO=...|PR=...|TR=...
+// ===== Helpers =====
+function todayKey() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth()+1).padStart(2,"0");
+  const dd = String(d.getDate()).padStart(2,"0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function nowISO() { return new Date().toISOString(); }
+
+function timeHM(diso) {
+  const d = new Date(diso);
+  const hh = String(d.getHours()).padStart(2,"0");
+  const mm = String(d.getMinutes()).padStart(2,"0");
+  return `${hh}:${mm}`;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, m => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+  })[m]);
+}
+
+function showMsg(type, text) {
+  const el = $("msg");
+  el.style.display = "block";
+  el.className = type === "ok" ? "ok" : type === "warn" ? "warn" : "bad";
+  el.textContent = text;
+  setTimeout(() => { el.style.display = "none"; }, 3500);
+}
+
+// ===== QR Parser =====
 function parseQR(text) {
   text = (text || "").trim();
 
   // 1) JSON
   if (text.startsWith("{") && text.endsWith("}")) {
     const obj = JSON.parse(text);
-
     const factura = String(obj.factura ?? obj.fac ?? "").trim();
     const bulto   = String(obj.bulto ?? obj.b ?? "").trim();
     if (!factura || !bulto) throw new Error("QR inválido: falta factura o bulto");
@@ -141,7 +111,8 @@ function parseQR(text) {
     };
   }
 
-  // 2) Formato clave=valor
+  // 2) Formato clave=valor (etiquetas.html)
+  // OC=...|FAC=...|B=...|T=...|CL=...|DI=...|LO=...|PR=...|TR=...
   if (text.includes("=") && text.includes("|")) {
     const obj = {};
     text.split("|").forEach(part => {
@@ -153,15 +124,15 @@ function parseQR(text) {
     });
 
     const factura = (obj["FAC"] || "").trim();
-    const bulto   = (obj["B"]   || "").trim();
+    const bulto   = (obj["B"] || "").trim();
     if (!factura || !bulto) throw new Error("QR inválido: falta FAC o B");
 
     return {
-      cliente:   (obj["CL"] || "").trim(),
+      cliente: (obj["CL"] || "").trim(),
       direccion: (obj["DI"] || "").trim(),
       localidad: (obj["LO"] || "").trim(),
       provincia: (obj["PR"] || "").trim(),
-      orden:     (obj["OC"] || "").trim(),
+      orden: (obj["OC"] || "").trim(),
       factura,
       bulto: Number(bulto),
       total_bultos: Number((obj["T"] || "0").trim() || 0),
@@ -172,6 +143,29 @@ function parseQR(text) {
   throw new Error("QR inválido: formato no reconocido");
 }
 
+// ===== Estado por Factura =====
+function buildFacturaStatus(rows) {
+  const by = {};
+  for (const r of rows) {
+    const fac = (r.factura || "").trim();
+    if (!fac) continue;
+    if (!by[fac]) by[fac] = { factura: fac, total: 0, set: new Set(), cliente: r.cliente || "" };
+    by[fac].set.add(Number(r.bulto));
+    if ((r.total_bultos || 0) > (by[fac].total || 0)) by[fac].total = r.total_bultos || 0;
+    if (!by[fac].cliente && r.cliente) by[fac].cliente = r.cliente;
+  }
+
+  const list = Object.values(by).map(x => {
+    const scanned = x.set.size;
+    const total = x.total || 0;
+    const complete = total > 0 ? scanned >= total : false;
+    return { ...x, scanned, complete };
+  });
+
+  list.sort((a,b)=>a.factura.localeCompare(b.factura, "es", { sensitivity:"base" }));
+  return list;
+}
+
 // ===== UI / Scanner =====
 let html5Qr = null;
 let lastText = "";
@@ -179,7 +173,7 @@ let busy = false;
 
 async function refreshUI() {
   const day = todayKey();
-  const rows = await getAllForDay(day);
+  const rows = await getAllToday(day);
 
   $("stTotal").textContent = rows.length;
 
@@ -189,34 +183,29 @@ async function refreshUI() {
   const last = rows.slice().sort((a,b)=>b.ts-a.ts)[0];
   $("stLast").textContent = last ? `${last.factura}-${last.bulto}` : "-";
 
+  // últimos 10
   const last10 = rows.slice().sort((a,b)=>b.ts-a.ts).slice(0,10);
   $("lastTable").innerHTML = last10.map(r => `
     <tr>
       <td>${timeHM(r.iso)}</td>
       <td>${escapeHtml(r.cliente || "")}</td>
-      <td>${escapeHtml(r.factura)}</td>
-      <td>${r.bulto}</td>
+      <td>${escapeHtml(r.factura || "")}</td>
+      <td>${r.bulto ?? ""}</td>
       <td>${escapeHtml(r.direccion || "")}</td>
     </tr>
   `).join("");
 
-  // estado por factura
-  const by = {};
-  for (const r of rows) {
-    if (!by[r.factura]) by[r.factura] = { total: r.total_bultos || 0, set: new Set() };
-    by[r.factura].set.add(r.bulto);
-    if ((r.total_bultos || 0) > (by[r.factura].total || 0)) by[r.factura].total = r.total_bultos || 0;
-  }
-
-  const lines = Object.entries(by)
-    .sort((a,b)=>a[0].localeCompare(b[0]))
-    .map(([factura, info]) => {
-      const scanned = info.set.size;
-      const total = info.total || "?";
-      return `• Factura <b>${escapeHtml(factura)}</b>: <b>${scanned}</b> / <b>${total}</b>`;
-    });
-
-  $("byFactura").innerHTML = lines.length ? lines.join("<br>") : "-";
+  // estado por factura + indicador
+  const status = buildFacturaStatus(rows);
+  $("byFactura").innerHTML = status.length ? status.map(s => {
+    const totalTxt = s.total ? s.total : "?";
+    const icon = s.complete ? "✅" : "⚠️";
+    const color = s.complete ? "#166534" : "#854d0e";
+    const label = s.complete ? "COMPLETO" : "INCOMPLETO";
+    return `• ${icon} Factura <b>${escapeHtml(s.factura)}</b> (${escapeHtml(s.cliente||"")})
+      — <b>${s.scanned}</b> / <b>${escapeHtml(String(totalTxt))}</b>
+      <span style="color:${color};font-weight:800;">${label}</span>`;
+  }).join("<br>") : "-";
 }
 
 async function onScanSuccess(decodedText) {
@@ -230,67 +219,46 @@ async function onScanSuccess(decodedText) {
   try {
     const data = parseQR(text);
 
+    const id_caja = `${data.factura}-${data.bulto}`.toLowerCase();
     const day = todayKey();
     const iso = nowISO();
-    const ts  = Date.now();
-
-    // ✅ clave lógica del día (para detectar duplicados)
-    const id_caja_day = `${day}-${data.factura}-${data.bulto}`.toLowerCase();
-
-    // ✅ clave única real (nunca pisa)
-    const id_scan = `${id_caja_day}-${ts}`;
+    const ts = Date.now();
 
     const operador = ($("who").value || "").trim();
 
-    const scan = {
-      id_scan,
-      id_caja_day,
-      day,
-      iso,
-      ts,
-      operador,
-      ...data
-    };
+    const scan = { id_caja, day, iso, ts, operador, ...data };
 
-    const rows = await getAllForDay(day);
-    const exists = rows.some(r => r.id_caja_day === id_caja_day);
+    const rows = await getAllToday(day);
+    const exists = rows.some(r => r.id_caja === id_caja);
 
     await putScan(scan);
 
-    if (exists) {
-      showMsg("warn", `⚠️ Repetido hoy: ${data.factura}-${data.bulto} (queda registrado igual)`);
-    } else {
-      showMsg("ok", `✅ Registrado: ${data.factura}-${data.bulto} — ${data.cliente || ""}`.trim());
-    }
+    if (exists) showMsg("warn", `⚠️ Repetido: ${data.factura}-${data.bulto} (no suma)`);
+    else showMsg("ok", `✅ Registrado: ${data.factura}-${data.bulto} — ${data.cliente || ""}`.trim());
 
     await refreshUI();
   } catch (e) {
     showMsg("bad", `❌ ${e.message || e}`);
   } finally {
-    setTimeout(() => { busy = false; }, 650);
+    setTimeout(() => { busy = false; }, 700);
   }
 }
 
 async function startScanner() {
   if (typeof Html5Qrcode === "undefined") {
-    showMsg("bad", "Falta libs/html5-qrcode.min.js. Copialo a la carpeta libs/");
+    showMsg("bad", "Falta libs/html5-qrcode.min.js");
     return;
   }
   if (!html5Qr) html5Qr = new Html5Qrcode("reader");
-
   const config = { fps: 10, qrbox: { width: 260, height: 260 } };
 
-  try {
-    await html5Qr.start(
-      { facingMode: "environment" },
-      config,
-      onScanSuccess,
-      () => {}
-    );
-    showMsg("ok", "📷 Cámara iniciada");
-  } catch (e) {
-    showMsg("bad", `❌ No pude iniciar cámara: ${e.message || e}`);
-  }
+  await html5Qr.start(
+    { facingMode: "environment" },
+    config,
+    onScanSuccess,
+    () => {}
+  );
+  showMsg("ok", "📷 Cámara iniciada");
 }
 
 async function stopScanner() {
@@ -300,10 +268,11 @@ async function stopScanner() {
   }
 }
 
-// ===== Export Excel =====
+// ===== Excel (blob + share) =====
 function buildWorkbookForDay(rows, day) {
   rows.sort((a,b)=>a.ts-b.ts);
 
+  // Detalle
   const detalle = rows.map(r => ({
     "Fecha": new Date(r.iso).toLocaleString("es-AR"),
     "Cliente": r.cliente || "",
@@ -312,23 +281,35 @@ function buildWorkbookForDay(rows, day) {
     "Provincia": r.provincia || "",
     "Orden": r.orden || "",
     "Factura": r.factura || "",
-    "Bulto N°": r.bulto || "",
-    "Total Bultos": r.total_bultos || "",
+    "Bulto N°": r.bulto ?? "",
+    "Total Bultos": r.total_bultos ?? "",
     "Transporte": r.transporte || "",
     "Operador": r.operador || "",
-    "ID Caja (día)": r.id_caja_day || "",
-    "ID Scan": r.id_scan || ""
+    "ID Caja": r.id_caja
   }));
 
   const wb = XLSX.utils.book_new();
   const wsDetalle = XLSX.utils.json_to_sheet(detalle);
   wsDetalle["!cols"] = [
-    { wch: 20 }, { wch: 26 }, { wch: 26 }, { wch: 18 }, { wch: 14 },
+    { wch: 20 }, { wch: 26 }, { wch: 24 }, { wch: 16 }, { wch: 14 },
     { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 14 },
-    { wch: 12 }, { wch: 20 }, { wch: 18 }
+    { wch: 12 }, { wch: 16 }
   ];
   XLSX.utils.book_append_sheet(wb, wsDetalle, "Detalle");
 
+  // Resumen por Factura (con completo/incompleto)
+  const status = buildFacturaStatus(rows).map(s => ({
+    "Factura": s.factura,
+    "Cliente": s.cliente || "",
+    "Escaneadas": s.scanned,
+    "Esperadas": s.total || "",
+    "Estado": (s.total && s.scanned >= s.total) ? "COMPLETO" : "INCOMPLETO"
+  }));
+  const wsFac = XLSX.utils.json_to_sheet(status);
+  wsFac["!cols"] = [{ wch: 14 }, { wch: 28 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+  XLSX.utils.book_append_sheet(wb, wsFac, "Resumen_por_Factura");
+
+  // Resumen por Cliente
   const resumen = {};
   const clienteKey = (c) => (c || "SIN CLIENTE").trim().replace(/\s+/g," ").toUpperCase();
 
@@ -338,8 +319,7 @@ function buildWorkbookForDay(rows, day) {
     resumen[ck].Escaneadas += 1;
     if (r.factura) resumen[ck].Facturas.add(String(r.factura).trim().toUpperCase());
   }
-
-  const seen = new Set(); // cliente|fac
+  const seen = new Set(); // ck|fac
   for (const r of rows) {
     const ck = clienteKey(r.cliente);
     const fac = String(r.factura || "").trim().toUpperCase();
@@ -357,129 +337,181 @@ function buildWorkbookForDay(rows, day) {
       "Cajas Escaneadas": x.Escaneadas,
       "Cajas Esperadas": x.Esperadas
     }))
-    .sort((a,b)=>a.Cliente.localeCompare(b.Cliente, "es", { sensitivity: "base" }));
+    .sort((a,b)=>a.Cliente.localeCompare(b.Cliente, "es", { sensitivity:"base" }));
 
-  const wsResumen = XLSX.utils.json_to_sheet(resumenRows);
-  wsResumen["!cols"] = [{ wch: 34 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
-  XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen_por_Cliente");
+  const wsCli = XLSX.utils.json_to_sheet(resumenRows);
+  wsCli["!cols"] = [{ wch: 30 }, { wch: 18 }, { wch: 18 }, { wch: 18 }];
+  XLSX.utils.book_append_sheet(wb, wsCli, "Resumen_por_Cliente");
 
   return wb;
 }
-async function exportExcel() {
-  if (typeof XLSX === "undefined") {
-    showMsg("bad", "No se cargó XLSX");
-    return;
-  }
 
+async function exportExcelBlob() {
+  if (typeof XLSX === "undefined") throw new Error("No se cargó XLSX");
   const day = todayKey();
   const rows = await getAllToday(day);
-
-  if (!rows.length) {
-    showMsg("warn", "No hay registros para exportar.");
-    return;
-  }
+  if (!rows.length) throw new Error("No hay registros para exportar.");
 
   const wb = buildWorkbookForDay(rows, day);
-  const filename = `resumen_clientes_${day}.xlsx`;
+  const filename = `resumen_${day}.xlsx`;
 
-  // 👉 Generar archivo en memoria
-  const arrayBuffer = XLSX.write(wb, {
-    bookType: "xlsx",
-    type: "array"
-  });
-
-  const blob = new Blob(
-    [arrayBuffer],
-    { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }
-  );
-
-  // 👉 Intentar compartir (Android)
-  try {
-    const file = new File([blob], filename, { type: blob.type });
-
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({
-        title: "Resumen del día",
-        text: "Excel de cajas escaneadas",
-        files: [file]
-      });
-      showMsg("ok", "📤 Excel listo para enviar");
-      return;
-    }
-  } catch (e) {
-    console.warn("No se pudo compartir:", e);
-  }
-
-  // 👉 Fallback: descarga clásica
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-
-  showMsg("ok", "📥 Excel descargado");
+  const ab = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  const blob = new Blob([ab], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  return { blob, filename, rows };
 }
 
-
-
-async function shareExcel() {
-  if (isPWA()) {
-    showMsg("warn", "📌 Compartir archivos suele fallar en la app instalada. Abrilo en navegador para exportar y compartir.");
-    const btn = $("btnOpenBrowser");
-    if (btn) btn.style.display = "inline-block";
-    return;
-  }
-  if (typeof XLSX === "undefined") {
-    showMsg("bad", "Falta libs/xlsx.full.min.js. Copialo a la carpeta libs/");
-    return;
-  }
-
-  const day = todayKey();
-  const rows = await getAllForDay(day);
-
-  if (!rows.length) {
-    showMsg("warn", "No hay registros para compartir.");
-    return;
-  }
-
-  const wb = buildWorkbookForDay(rows, day);
-  const filename = `resumen_clientes_${day}.xlsx`;
-
+async function exportExcel() {
   try {
-    const ab = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    const blob = new Blob([ab], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const { blob, filename } = await exportExcelBlob();
+
+    // Descarga (fallback)
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    showMsg("ok", `📥 Excel descargado: ${filename}`);
+  } catch (e) {
+    showMsg("bad", `❌ ${e.message || e}`);
+  }
+}
+
+async function sendWhatsApp() {
+  try {
+    const { blob, filename, rows } = await exportExcelBlob();
+
+    const day = todayKey();
+    const status = buildFacturaStatus(rows);
+    const completos = status.filter(s => s.complete).length;
+    const incompletos = status.filter(s => !s.complete).length;
+
+    const text = `Resumen ${day}\n` +
+      `Cajas: ${rows.length}\n` +
+      `Facturas: ${status.length}\n` +
+      `Completas: ${completos}\n` +
+      `Incompletas: ${incompletos}\n` +
+      `Adjunto Excel con detalle y resumen.`;
 
     const file = new File([blob], filename, { type: blob.type });
 
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
       await navigator.share({
-        title: "Resumen del día",
-        text: "Excel con detalle + resumen por cliente",
+        title: `Resumen ${day}`,
+        text,
         files: [file]
       });
-      showMsg("ok", "📤 Compartido.");
-    } else {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      showMsg("ok", "📥 Descargado (tu dispositivo no soporta compartir directo).");
+      showMsg("ok", "📤 Abrí WhatsApp y enviá el archivo");
+      return;
     }
+
+    // Fallback: WhatsApp solo texto (sin archivo)
+    const wa = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(wa, "_blank");
+    showMsg("warn", "Tu dispositivo no permite compartir archivos desde la PWA. Se envió solo texto.");
   } catch (e) {
-    showMsg("bad", `❌ No se pudo compartir: ${e.message || e}`);
+    showMsg("bad", `❌ ${e.message || e}`);
+  }
+}
+
+// ===== PDF del día (sin librerías) =====
+// Genera un reporte HTML y abre impresión (Guardar como PDF funciona offline)
+async function pdfDelDia() {
+  try {
+    const day = todayKey();
+    const rows = await getAllToday(day);
+    if (!rows.length) {
+      showMsg("warn", "No hay registros para PDF.");
+      return;
+    }
+
+    const status = buildFacturaStatus(rows);
+
+    const html = `
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Resumen ${day}</title>
+<style>
+  body{font-family:Arial,system-ui;margin:18px;color:#111}
+  h1{font-size:18px;margin:0 0 10px}
+  .meta{font-size:12px;margin-bottom:14px;opacity:.85}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{border:1px solid #ddd;padding:6px;text-align:left}
+  th{background:#f3f4f6}
+  .ok{color:#166534;font-weight:700}
+  .bad{color:#991b1b;font-weight:700}
+</style>
+</head>
+<body>
+  <h1>Resumen del día - ${day}</h1>
+  <div class="meta">
+    Cajas: <b>${rows.length}</b> — Facturas: <b>${status.length}</b>
+  </div>
+
+  <h2 style="font-size:14px;margin:16px 0 8px;">Estado por Factura</h2>
+  <table>
+    <thead><tr>
+      <th>Factura</th><th>Cliente</th><th>Escaneadas</th><th>Esperadas</th><th>Estado</th>
+    </tr></thead>
+    <tbody>
+      ${status.map(s=>{
+        const est = (s.total && s.scanned >= s.total) ? "COMPLETO" : "INCOMPLETO";
+        const cls = (est==="COMPLETO") ? "ok" : "bad";
+        return `<tr>
+          <td>${escapeHtml(s.factura)}</td>
+          <td>${escapeHtml(s.cliente||"")}</td>
+          <td>${s.scanned}</td>
+          <td>${s.total || ""}</td>
+          <td class="${cls}">${est}</td>
+        </tr>`;
+      }).join("")}
+    </tbody>
+  </table>
+
+  <h2 style="font-size:14px;margin:16px 0 8px;">Detalle (últimos 60)</h2>
+  <table>
+    <thead><tr>
+      <th>Hora</th><th>Cliente</th><th>Factura</th><th>Bulto</th><th>Dirección</th><th>Localidad</th><th>Provincia</th>
+    </tr></thead>
+    <tbody>
+      ${rows.slice().sort((a,b)=>b.ts-a.ts).slice(0,60).map(r=>`
+        <tr>
+          <td>${timeHM(r.iso)}</td>
+          <td>${escapeHtml(r.cliente||"")}</td>
+          <td>${escapeHtml(r.factura||"")}</td>
+          <td>${r.bulto ?? ""}</td>
+          <td>${escapeHtml(r.direccion||"")}</td>
+          <td>${escapeHtml(r.localidad||"")}</td>
+          <td>${escapeHtml(r.provincia||"")}</td>
+        </tr>
+      `).join("")}
+    </tbody>
+  </table>
+
+  <script>window.onload=()=>setTimeout(()=>window.print(), 250);</script>
+</body>
+</html>`;
+
+    const w = window.open("", "_blank");
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+
+    showMsg("ok", "🧾 Abrió el PDF (Imprimir → Guardar como PDF)");
+  } catch (e) {
+    showMsg("bad", `❌ ${e.message || e}`);
   }
 }
 
 // ===== Jornada / borrar =====
 async function resetDay() {
-  if (!confirm("¿Nueva jornada? (Hoy se agrupa por fecha. Esto NO borra otros días). ¿Continuar?")) return;
+  if (!confirm("¿Nueva jornada? No borra días anteriores (se guardan por fecha). ¿Continuar?")) return;
   showMsg("ok", "Nueva jornada lista (escaneá normalmente).");
   await refreshUI();
 }
@@ -496,36 +528,29 @@ let deferredPrompt = null;
 window.addEventListener("beforeinstallprompt", (e) => {
   e.preventDefault();
   deferredPrompt = e;
-  const btn = $("btnInstall");
-  if (btn) btn.style.display = "inline-block";
+  $("btnInstall").style.display = "inline-block";
+});
+$("btnInstall").addEventListener("click", async () => {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt = null;
+  $("btnInstall").style.display = "none";
 });
 
-// ===== Bind (cuando el DOM está listo) =====
-document.addEventListener("DOMContentLoaded", () => {
-  $("btnInstall")?.addEventListener("click", async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    await deferredPrompt.userChoice;
-    deferredPrompt = null;
-    $("btnInstall").style.display = "none";
-  });
+// ===== Bind =====
+$("btnStart").addEventListener("click", startScanner);
+$("btnStop").addEventListener("click", stopScanner);
+$("btnExport").addEventListener("click", exportExcel);
 
-  $("btnStart")?.addEventListener("click", startScanner);
-  $("btnStop")?.addEventListener("click", stopScanner);
-  $("btnExport")?.addEventListener("click", exportExcel);
-  $("btnShare")?.addEventListener("click", shareExcel);
-  $("btnClearAll")?.addEventListener("click", wipeAll);
-  $("btnResetDay")?.addEventListener("click", resetDay);
-  $("btnOpenBrowser")?.addEventListener("click", openInBrowser);
+const btnWhats = document.getElementById("btnWhats");
+if (btnWhats) btnWhats.addEventListener("click", sendWhatsApp);
 
-  // UI según modo
-  if (isPWA()) {
-    if ($("btnOpenBrowser")) $("btnOpenBrowser").style.display = "inline-block";
-    if ($("btnShare")) $("btnShare").style.display = "none";
-  } else {
-    if ($("btnOpenBrowser")) $("btnOpenBrowser").style.display = "none";
-    if ($("btnShare")) $("btnShare").style.display = "inline-block";
-  }
+const btnPdf = document.getElementById("btnPdf");
+if (btnPdf) btnPdf.addEventListener("click", pdfDelDia);
 
-  refreshUI();
-});
+$("btnClearAll").addEventListener("click", wipeAll);
+$("btnResetDay").addEventListener("click", resetDay);
+
+// init
+refreshUI();
