@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Formato de Envío - Etiqueta</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+<script>
+function safeVal(s){ return String(s||"").replaceAll("|"," ").replaceAll("\n"," ").trim(); }
+function norm(s){ return (s||"").trim(); }
+function getBultosConfig(){ return { totalBultos: 3 }; }
+
+// QR completo con dirección / localidad / provincia
+function buildQrPayloadShort(bultoNumero){
+  const oc="OC123";
+  const fac="F001";
+  const cl="CLIENTE PRUEBA";
+  const tr="ANDREANI";
+  const di="CALLE FALSA 123";
+  const lo="CABA";
+  const pr="BUENOS AIRES";
+  const totalBultos=3;
+  return `OC=${safeVal(oc)}|FAC=${safeVal(fac)}|B=${bultoNumero}|T=${totalBultos}|CL=${safeVal(cl)}|DI=${safeVal(di)}|LO=${safeVal(lo)}|PR=${safeVal(pr)}|TR=${safeVal(tr)}`;
+}
+</script>
+</body>
+</html>
