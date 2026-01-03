@@ -1,6 +1,9 @@
 {
-  "name": "Contador de Cajas",
-  "short_name": "CajasQR",
-  "start_url": "scanner.html",
-  "display": "standalone"
+  "name": "Contador de Cajas (QR)",
+  "short_name": "Cajas QR",
+  "start_url": "./scanner.html",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#111827",
+  "icons": []
 }

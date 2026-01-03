@@ -256,6 +256,7 @@
       <input type="text" id="inputDespacharEmpresa" placeholder="Empresa de Envíos" required><br>
     </fieldset>
 
+    <!-- ✅ NUEVO: campos para que el scanner los vea -->
     <fieldset>
       <legend>Datos extra (para Scanner)</legend>
 
@@ -481,27 +482,24 @@
     if (previewActive) renderSinglePreview();
   }
 
-  function safeVal(s){ return String(s || "").replaceAll("|", " ").replaceAll("\\n"," ").trim(); }
+  function safeVal(s){ return String(s || "").replaceAll("|", " ").replaceAll("\n"," ").trim(); }
 
-  // ✅ QR completo: incluye Cliente + Dirección + Localidad + Provincia + Transporte
-  // Formato: OC=...|FAC=...|B=...|T=...|CL=...|DI=...|LO=...|PR=...|TR=...
-  // Formato: OC=xxx|FAC=yyy|B=7|T=12|CL=Cliente|DI=Direccion|LO=Localidad|PR=Provincia|TR=Transporte
-function buildQrPayloadShort(bultoNumero){
-  const { totalBultos } = getBultosConfig();
+  // ✅ QR: incluye Cliente y Transporte
+  // Formato: OC=xxx|FAC=yyy|B=7|T=12|CL=Cliente|TR=Transporte
+  function buildQrPayloadShort(bultoNumero){
+    const { totalBultos } = getBultosConfig();
+    const oc  = norm(el("inputOrdenCompra").value);
+    const fac = norm(el("inputFactura").value);
 
-  const oc  = norm(el("inputOrdenCompra").value);
-  const fac = norm(el("inputFactura").value);
+    const cl = norm(el("inputClienteNombre").value) || norm(el("inputSenores").value);
+    const tr = norm(el("inputTransporte").value) || norm(el("inputDespacharEmpresa").value);
 
-  const cl = norm(el("inputClienteNombre").value) || norm(el("inputSenores").value);
-  const di = norm(el("inputDireccion").value);
-  const lo = norm(el("inputLocalidad").value);
-  const pr = norm(el("inputProvincia").value);
+const di = norm(el("inputDireccion").value);
+    const lo = norm(el("inputLocalidad").value);
+    const pr = norm(el("inputProvincia").value);
 
-  const tr = norm(el("inputTransporte").value) || norm(el("inputDespacharEmpresa").value);
-
-  return `OC=${safeVal(oc)}|FAC=${safeVal(fac)}|B=${bultoNumero}|T=${totalBultos}|CL=${safeVal(cl)}|DI=${safeVal(di)}|LO=${safeVal(lo)}|PR=${safeVal(pr)}|TR=${safeVal(tr)}`;
-}
-
+        return `OC=${safeVal(oc)}|FAC=${safeVal(fac)}|B=${bultoNumero}|T=${totalBultos}|CL=${safeVal(cl)}|DI=${safeVal(di)}|LO=${safeVal(lo)}|PR=${safeVal(pr)}|TR=${safeVal(tr)}`;
+  }
 
   function fillLabelFromInputs(labelEl, bultoNumero) {
     const get = (id) => norm(el(id).value);
