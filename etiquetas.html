@@ -485,20 +485,23 @@
 
   // ✅ QR completo: incluye Cliente + Dirección + Localidad + Provincia + Transporte
   // Formato: OC=...|FAC=...|B=...|T=...|CL=...|DI=...|LO=...|PR=...|TR=...
-  function buildQrPayloadShort(bultoNumero){
-    const { totalBultos } = getBultosConfig();
-    const oc  = norm(el("inputOrdenCompra").value);
-    const fac = norm(el("inputFactura").value);
+  // Formato: OC=xxx|FAC=yyy|B=7|T=12|CL=Cliente|DI=Direccion|LO=Localidad|PR=Provincia|TR=Transporte
+function buildQrPayloadShort(bultoNumero){
+  const { totalBultos } = getBultosConfig();
 
-    const cl = norm(el("inputClienteNombre").value) || norm(el("inputSenores").value);
-    const tr = norm(el("inputTransporte").value) || norm(el("inputDespacharEmpresa").value);
+  const oc  = norm(el("inputOrdenCompra").value);
+  const fac = norm(el("inputFactura").value);
 
-    const di = norm(el("inputDireccion").value);
-    const lo = norm(el("inputLocalidad").value);
-    const pr = norm(el("inputProvincia").value);
+  const cl = norm(el("inputClienteNombre").value) || norm(el("inputSenores").value);
+  const di = norm(el("inputDireccion").value);
+  const lo = norm(el("inputLocalidad").value);
+  const pr = norm(el("inputProvincia").value);
 
-    return `OC=${safeVal(oc)}|FAC=${safeVal(fac)}|B=${bultoNumero}|T=${totalBultos}|CL=${safeVal(cl)}|DI=${safeVal(di)}|LO=${safeVal(lo)}|PR=${safeVal(pr)}|TR=${safeVal(tr)}`;
-  }
+  const tr = norm(el("inputTransporte").value) || norm(el("inputDespacharEmpresa").value);
+
+  return `OC=${safeVal(oc)}|FAC=${safeVal(fac)}|B=${bultoNumero}|T=${totalBultos}|CL=${safeVal(cl)}|DI=${safeVal(di)}|LO=${safeVal(lo)}|PR=${safeVal(pr)}|TR=${safeVal(tr)}`;
+}
+
 
   function fillLabelFromInputs(labelEl, bultoNumero) {
     const get = (id) => norm(el(id).value);
