@@ -125,10 +125,39 @@
 
 </div>
 
-<!-- Librerías locales para offline -->
-<script src="libs/html5-qrcode.min.js"></script>
-<script src="libs/xlsx.full.min.js"></script>
-<script src="app.js"></script>
+<!-- Librerías (primero local para offline; si faltan, cae a CDN) -->
+<script>
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = src;
+      s.onload = () => resolve(true);
+      s.onerror = () => reject(new Error('No se pudo cargar: ' + src));
+      document.head.appendChild(s);
+    });
+  }
+
+  (async () => {
+    // html5-qrcode
+    try {
+      await loadScript('libs/html5-qrcode.min.js');
+    } catch (e) {
+      // CDN fallback
+      await loadScript('https://unpkg.com/html5-qrcode@2.3.8/minified/html5-qrcode.min.js');
+    }
+
+    // SheetJS (XLSX)
+    try {
+      await loadScript('libs/xlsx.full.min.js');
+    } catch (e) {
+      // CDN fallback
+      await loadScript('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+    }
+
+    // App
+    await loadScript('app.js');
+  })();
+</script>
 
 <script>
   if ('serviceWorker' in navigator) {
