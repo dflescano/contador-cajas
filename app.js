@@ -389,33 +389,73 @@ async function sendWhatsApp() {
     const completos = status.filter(s => s.complete).length;
     const incompletos = status.filter(s => !s.complete).length;
 
-    const text = `Resumen ${day}\n` +
-      `Cajas: ${rows.length}\n` +
-      `Facturas: ${status.length}\n` +
-      `Completas: ${completos}\n` +
-      `Incompletas: ${incompletos}\n` +
-      `Adjunto Excel con detalle y resumen.`;
+    const text =
+      `Resumen ${day}
+` +
+      `Cajas: ${rows.length}
+` +
+      `Facturas: ${status.length}
+` +
+      `Completas: ${completos}
+` +
+      `Incompletas: ${incompletos}
+` +
+      `
+` +
+      `📎 IMPORTANTE: En el celular WhatsApp normalmente NO permite adjuntar archivos de forma automática desde una web/PWA.
+` +
+      `1) Descargá el Excel
+` +
+      `2) Se abrirá WhatsApp con el mensaje
+` +
+      `3) Adjuntá el archivo manualmente (📎).`;
 
+    // 1) Intento "compartir" nativo (solo si el dispositivo lo soporta bien)
+    // En muchos móviles/PWA esto falla con Permission denied / NotAllowedError.
     const file = new File([blob], filename, { type: blob.type });
 
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({
-        title: `Resumen ${day}`,
-        text,
-        files: [file]
-      });
-      showMsg("ok", "📤 Abrí WhatsApp y enviá el archivo");
-      return;
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({
+          title: `Resumen ${day}`,
+          text,
+          files: [file]
+        });
+        showMsg("ok", "📤 Se abrió el share del sistema. Si WhatsApp no adjunta, descargá y adjuntá manualmente.");
+        return;
+      } catch (err) {
+        // Caídas típicas: NotAllowedError / SecurityError / "Permission denied"
+        console.warn("navigator.share falló:", err);
+      }
     }
 
-    // Fallback: WhatsApp solo texto (sin archivo)
+    // 2) Fallback robusto para móvil:
+    // - Descarga el archivo
+    // - Abre WhatsApp con el texto
+    // - El usuario adjunta manualmente (esto NO falla)
+    try {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showMsg("ok", `📥 Excel descargado: ${filename}`);
+    } catch (e) {
+      // Si por alguna razón no puede descargar (iOS PWA a veces), mostramos ayuda
+      showMsg("warn", "No pude descargar automáticamente. Probá 'Abrir en navegador (exportar)'.");
+    }
+
     const wa = `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(wa, "_blank");
-    showMsg("warn", "Tu dispositivo no permite compartir archivos desde la PWA. Se envió solo texto.");
+    showMsg("warn", "WhatsApp se abrió con el mensaje. Ahora adjuntá el Excel manualmente (📎).");
   } catch (e) {
     showMsg("bad", `❌ ${e.message || e}`);
   }
 }
+
 
 // ===== PDF del día (sin librerías) =====
 // Genera un reporte HTML y abre impresión (Guardar como PDF funciona offline)
